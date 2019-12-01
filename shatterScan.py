@@ -1,16 +1,16 @@
 import re
 from datetime import datetime
 import sqlite3
+# 11-7, 9-8, 21-3,
 
-path = r"C:\Users\<yourUsernameHere>\AppData\Local\WorldExplorers\Saved\Logs\WorldExplorers.log"
-
+path = r"C:\Users\<YourUsernameHere>\AppData\Local\WorldExplorers\Saved\Logs\WorldExplorers.log"
 db = sqlite3.connect('shatter.db')
 
 db.execute("""DROP TABLE IF EXISTS damage;""")
 db.execute("""DROP TABLE IF EXISTS fights;""")
 db.execute("""DROP TABLE IF EXISTS rewards;""")
 db.execute("""CREATE TABLE IF NOT EXISTS damage (fightID int, character TEXT, damage INT, NullAttacks INT, attacks INT);""")
-db.execute("""CREATE TABLE IF NOT EXISTS fights (user TEXT, fightID int, levelID TEXT, 'timestamp' timestamp, duration INT, victory BOOLEAN);""")
+db.execute("""CREATE TABLE IF NOT EXISTS fights (user TEXT, fightID int, levelID TEXT, 'timestamp' timestamp, duration INT, victory BOOLEAN, accountXP INT, auto BOOLEAN);""")
 db.execute("""CREATE TABLE IF NOT EXISTS rewards (fightID int, rewardName TEXT, rewardCount INT);""")
 
 with open(path) as file:
@@ -37,6 +37,7 @@ for idx, line in enumerate(fileLines):
 				# print(l, end='')
 				break
 	if fight:
+		fightNum += 1
 		boardPopulated = False
 		rewardsRE = r'LogProfileSys: MCP-Profile: .+? gained (\d+?) x (.*)'
 		damageRE = r'^WEXCombat: Turn (\d+?) \(Damage\) "(.+?)" aka (.+?)  Received ([\d|,|\.]+?) of ([\d|,|\.]+?) (\w+?) damage from (.+?)\.'
@@ -47,6 +48,9 @@ for idx, line in enumerate(fileLines):
 		lvlName = None
 		party = {}
 		enemies = {}
+		accountXP = 0
+		totalTurns = None
+		autoTurns = None
 		for fIdx, f in enumerate(fight):
 			evtTime = f[1:24]
 			msg = f[30:]
@@ -67,8 +71,9 @@ for idx, line in enumerate(fileLines):
 				lvlName = msg[34:].strip()
 				continue
 
-			if not fightStartTime:
-				fightStartTime = datetime.strptime(evtTime, '%Y.%m.%d-%H.%M.%S:%f')
+			if msg.startswith('LogWExp: ACCOUNT ITEM PICKUP - StandIn:AccountXp x '):
+				xp = int(msg[51:].replace(',', ''))
+				accountXP += xp
 
 			dmgRE = re.match(damageRE, msg)
 			if dmgRE:
@@ -97,24 +102,25 @@ for idx, line in enumerate(fileLines):
 					totalRewards[rewardType] = (totalRewards.get(rewardType) or 0) + rewardAmount
 			if "WEXCombat: Oh yea, you're such a winner!" in msg:
 				win = True
-		# print(fightStartTime, lvlName)
-		# print("Fight:", fightNum)
-		# print("Level:", lvlName)
-		# print("Start Time:", fightStartTime)
+
+			if msg.startswith('WEXAnalytics: Warning:    Stat_InteractiveTurns = '):
+				totalTurns = int(msg[50:].replace(',', ''))
+			if msg.startswith('WEXAnalytics: Warning:    Stat_AutoplayTurns = '):
+				autoTurns = int(msg[47:].replace(',', ''))
+
+		# print(f'T: {totalTurns}, A: {autoTurns}')
+		""" Insert damage data """
 		for i in party:
 			if party[i].get('Damage'):
 				db.execute("""INSERT INTO damage (fightID, character, damage, NullAttacks, attacks)
 					VALUES ($1, $2, $3, $4, $5)""", (fightNum, party[i]['Name'], party[i]['Damage'], party[i]['NullAtks'], party[i]['Attacks']))
-				# print('', party[i]['Name'], party[i]['Damage'])
-		# print(party)
-		# print()
-		# print(fightRewards)
-		# print(user)
 
-		db.execute("""INSERT INTO fights (user, fightID, levelID, 'timestamp', duration, victory)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			""", (user, fightNum, lvlName, fightStartTime, (fightEndTime - fightStartTime).total_seconds(), win))
+		""" Insert fight metadata """
+		db.execute("""INSERT INTO fights (user, fightID, levelID, 'timestamp', duration, victory, accountXP, auto)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			""", (user, fightNum, lvlName, fightStartTime, (fightEndTime - fightStartTime).total_seconds(), win, accountXP, (totalTurns and autoTurns and totalTurns - autoTurns < 5) or 0))
 
+		""" Insert reward data """
 		for reward in fightRewards:
 			db.execute("""INSERT INTO rewards (fightID, rewardName, rewardCount)
 				VALUES ($1, $2, $3)
