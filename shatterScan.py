@@ -3,14 +3,15 @@ from datetime import datetime
 import sqlite3
 from os import listdir
 from os.path import isfile, join
-# 11-7, 9-8, 21-3,
-computerUserName = '<yourusernamehere>'
-logfiles = [f for f in listdir(f'C:\\Users\\{computerUserName}\\AppData\\Local\\WorldExplorers\\Saved\\Logs') if (isfile(join(f'C:\\Users\\{computerUserName}\\AppData\\Local\\WorldExplorers\\Saved\\Logs', f)) and f.startswith('WorldExplorers'))]
+import tkinter as tk
+from tkinter import filedialog
 
-def shatterScan(filename='WorldExplorers.log'):
+# 11-7, 9-8, 21-3,
+
+
+def shatterScan(path):
 	db = sqlite3.connect('shatter.db')
 
-	path = f'C:\\Users\\{computerUserName}\\AppData\\Local\\WorldExplorers\\Saved\\Logs\\{filename}'
 	# db.execute("""DROP TABLE IF EXISTS damage;""")
 	# db.execute("""DROP TABLE IF EXISTS fights;""")
 	# db.execute("""DROP TABLE IF EXISTS rewards;""")
@@ -33,12 +34,9 @@ def shatterScan(filename='WorldExplorers.log'):
 				user = username.group(1)
 		fight = []
 		if 'LogProfileSys: MCP-Profile: Command InitializeLevel queued to send' in line:
-			# print(idx)
 			for idx2, l in enumerate(fileLines[idx:]):
-				# if "LogWExp: UWExpGameOverWidget - Finalize Successful" in l:
 				if "LogWExp: UWExpGameOverWidget - Finalize Successful" in l:
 					fight = fileLines[idx:idx + idx2]
-					# print(l, end='')
 					break
 		if fight:
 			fightNum += 1
@@ -60,12 +58,12 @@ def shatterScan(filename='WorldExplorers.log'):
 			win = False
 			lvlName = None
 			party = {}
-			enemies = {}
+			# enemies = {}
 			accountXP = 0
 			totalTurns = None
 			autoTurns = None
 			for fIdx, f in enumerate(fight):
-				evtTime = f[1:24]
+				# evtTime = f[1:24]
 				msg = f[30:]
 				if party == {} and msg == 'LogWExp: ... Finished populating game board!\n':
 					boardPopulated = True
@@ -148,7 +146,22 @@ def shatterScan(filename='WorldExplorers.log'):
 	# 	print(reward.split(':')[1], totalRewards[reward])
 
 
-for lf in logfiles:
-	shatterScan(lf)
+def main(computerUserName='', prompt=False):
+	if prompt:
+		root = tk.Tk()
+		root.withdraw()
 
-shatterScan()
+		folderPath = filedialog.askdirectory()
+		print(folderPath)
+		logfiles = [folderPath + '\\' + f for f in listdir(folderPath) if (isfile(join(folderPath, f)) and f.startswith('WorldExplorers'))]
+		for lf in logfiles:
+			shatterScan(lf)
+	else:
+		defaultLogPath = f'C:\\Users\\{computerUserName}\\AppData\\Local\\WorldExplorers\\Saved\\Logs\\'
+		logfiles = [defaultLogPath + f for f in listdir(defaultLogPath) if (isfile(join(defaultLogPath, f)) and f.startswith('WorldExplorers'))]
+		for lf in logfiles:
+			shatterScan(lf)
+
+
+if __name__ == '__main__':
+	main(prompt=True)
